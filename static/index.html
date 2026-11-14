@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>文档批量处理工具</title>
+<link rel="icon" href="data:,">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+--bg:#15171c;--panel:#1c1f26;--panel2:#22262f;--line:#2d323d;
+--tx:#e6e9ef;--tx2:#939cab;--tx3:#6b7280;
+--acc:#4c9aff;--ok:#3ecf8e;--warn:#f0a742;--err:#f06565;
+}
+body{background:var(--bg);color:var(--tx);font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+height:100vh;display:flex;flex-direction:column;overflow:hidden}
+header{display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--panel);flex:0 0 auto}
+header h1{font-size:15px;font-weight:600;letter-spacing:.3px}
+.badge{font-size:12px;padding:2px 9px;border-radius:10px;background:var(--panel2);color:var(--tx2);border:1px solid var(--line)}
+.badge.run{background:rgba(76,154,255,.14);color:var(--acc);border-color:rgba(76,154,255,.4)}
+.badge.ok{background:rgba(62,207,142,.14);color:var(--ok);border-color:rgba(62,207,142,.4)}
+.badge.err{background:rgba(240,101,101,.14);color:var(--err);border-color:rgba(240,101,101,.4)}
+header .spacer{flex:1}
+header .tiny{font-size:12px;color:var(--tx3)}
+main{flex:1;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(340px,.85fr);gap:0;overflow:hidden}
+.left{padding:18px 20px;overflow-y:auto}
+.right{border-left:1px solid var(--line);display:flex;flex-direction:column;background:#12141a;overflow:hidden}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
+.card h2{font-size:13px;font-weight:600;color:var(--tx);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.card h2 .num{width:20px;height:20px;border-radius:50%;background:var(--acc);color:#fff;font-size:11px;
+display:grid;place-items:center;font-weight:600;flex:0 0 auto}
+.row{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+.row:last-child{margin-bottom:0}
+input[type=text]{flex:1;min-width:0;background:#0f1116;border:1px solid var(--line);color:var(--tx);
+padding:8px 11px;border-radius:7px;font:13px/1.5 inherit;outline:none}
+input[type=text]:focus{border-color:var(--acc)}
+input[type=text]::placeholder{color:var(--tx3)}
+select{background:#0f1116;border:1px solid var(--line);color:var(--tx);padding:7px 10px;
+border-radius:7px;font:13px/1.5 inherit;outline:none;cursor:pointer;flex:0 0 auto}
+select:focus{border-color:var(--acc)}
+button{background:var(--panel2);color:var(--tx);border:1px solid var(--line);padding:8px 15px;
+border-radius:7px;font:13px/1.5 inherit;cursor:pointer;white-space:nowrap;transition:.13s;flex:0 0 auto}
+button:hover:not(:disabled){border-color:var(--acc);color:var(--acc)}
+button:disabled{opacity:.38;cursor:not-allowed}
+button.primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:500}
+button.primary:hover:not(:disabled){background:#5ea8ff;color:#fff}
+button.danger{background:rgba(240,101,101,.12);border-color:rgba(240,101,101,.5);color:var(--err)}
+button.danger:hover:not(:disabled){background:rgba(240,101,101,.22);color:var(--err)}
+button.sm{padding:5px 11px;font-size:12px}
+label.chk{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--tx2);cursor:pointer;user-select:none}
+label.chk input{accent-color:var(--acc);width:14px;height:14px;cursor:pointer}
+.hint{font-size:12px;color:var(--tx3);margin-top:8px;line-height:1.65}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;color:var(--tx3);font-weight:500;padding:7px 8px;border-bottom:1px solid var(--line);font-size:12px}
+td{padding:6px 8px;border-bottom:1px solid rgba(45,50,61,.5);color:var(--tx2);vertical-align:top}
+td.n{color:var(--tx);font-variant-numeric:tabular-nums}
+tr:hover td{background:rgba(76,154,255,.05)}
+.tblwrap{max-height:290px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;margin-top:10px}
+.kwrow{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.kwrow input{flex:1}
+.kwrow .x{background:none;border:none;color:var(--tx3);padding:4px 8px;font-size:16px;line-height:1}
+.kwrow .x:hover{color:var(--err);border:none}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:10px;margin-top:12px}
+.stat{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:11px 13px}
+.stat .k{font-size:11.5px;color:var(--tx3);margin-bottom:3px}
+.stat .v{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--tx)}
+.stat .v.ok{color:var(--ok)}.stat .v.warn{color:var(--warn)}.stat .v.err{color:var(--err)}
+.logbar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.logbar span{font-size:12px;color:var(--tx2);font-weight:500}
+.logbar .spacer{flex:1}
+#log{flex:1;overflow-y:auto;padding:8px 14px;font:12px/1.75 ui-monospace,"Cascadia Mono",Consolas,monospace}
+#log div{display:flex;gap:8px;padding:1px 0}
+#log .t{color:var(--tx3);flex:0 0 auto}
+#log .m{word-break:break-all;color:var(--tx2)}
+#log .ok .m{color:var(--ok)}
+#log .warn .m{color:var(--warn)}
+#log .error .m{color:var(--err)}
+#log .head .m{color:var(--acc);font-weight:500}
+#log .head{padding:5px 0}
+footer{flex:0 0 auto;border-top:1px solid var(--line);background:var(--panel);padding:10px 20px}
+.bar{height:5px;background:#0f1116;border-radius:3px;overflow:hidden;margin-bottom:7px}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#4c9aff,#3ecf8e);
+border-radius:3px;transition:width .25s}
+.footinfo{display:flex;justify-content:space-between;font-size:12px;color:var(--tx3);gap:12px}
+.footinfo .cur{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.66);display:none;place-items:center;z-index:99;padding:20px}
+#modal.on{display:grid}
+.dlg{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px;max-width:520px;width:100%}
+.dlg h3{font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:9px}
+.dlg h3 .ico{color:var(--warn);font-size:18px}
+.dlg .body{font-size:13px;color:var(--tx2);line-height:1.75;margin-bottom:18px;max-height:46vh;overflow-y:auto}
+.dlg .body b{color:var(--tx)}
+.dlg .acts{display:flex;justify-content:flex-end;gap:9px}
+.warnbox{background:rgba(240,167,66,.1);border:1px solid rgba(240,167,66,.35);border-radius:8px;
+padding:11px 13px;font-size:12.5px;color:var(--warn);margin-bottom:12px;line-height:1.7}
+.tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:5px;background:var(--panel2);
+border:1px solid var(--line);color:var(--tx2);margin-right:5px}
+.empty{text-align:center;color:var(--tx3);font-size:12.5px;padding:22px 0}
+#dirModal{position:fixed;inset:0;background:rgba(0,0,0,.68);display:none;place-items:center;z-index:98;padding:20px}
+#dirModal.on{display:grid}
+.dirlist{margin-top:12px;border:1px solid var(--line);border-radius:8px;max-height:48vh;overflow-y:auto;background:#0f1116}
+.diritem{display:flex;align-items:center;gap:9px;padding:8px 12px;cursor:pointer;font-size:13px;color:var(--tx2);border-bottom:1px solid rgba(45,50,61,.4)}
+.diritem:hover{background:rgba(76,154,255,.1);color:var(--acc)}
+.diritem:last-child{border-bottom:none}
+.diritem .ico{color:var(--warn);font-size:13px;flex:0 0 auto}
+.dirbox{background:#0f1116;border:1px solid var(--line);border-radius:7px;padding:7px 11px;font-size:12.5px;color:var(--tx2);word-break:break-all;flex:1;font-family:ui-monospace,Consolas,monospace}
+@media(max-width:900px){main{grid-template-columns:1fr;grid-template-rows:1fr 300px}.right{border-left:none;border-top:1px solid var(--line)}}
+#stuckBar{background:rgba(240,101,101,.13);border-top:1px solid rgba(240,101,101,.45);
+color:var(--err);font-size:12.5px;padding:9px 16px;line-height:1.6}
+#stuckBar b{color:var(--err)}
+#stuckBar button{margin-left:10px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>文档批量处理工具</h1>
+  <span class="badge" id="badge">空闲</span>
+  <span class="spacer"></span>
+  <span class="tiny" id="elapsed"></span>
+  <button class="danger sm keep-enabled" id="btnKill" onclick="askKill()"
+          title="任务长时间无响应时，点这里结束残留进程并清理锁文件">中断并清理进程</button>
+</header>
+
+<main>
+  <div class="left">
+
+    <div class="card">
+      <h2><span class="num">1</span>选择目录</h2>
+      <div class="row">
+        <input type="text" id="root" placeholder="点「浏览」选择，或直接粘贴文件夹路径">
+        <button onclick="pickFolder()">浏览</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="recursive" checked> 遍历所有子目录</label>
+      <div class="row" style="margin-top:14px">
+        <button class="primary needs-engine" onclick="doConvert()" disabled>docx 转换</button>
+        <button onclick="doCleanupScan()">doc 文件清理</button>
+      </div>
+      <div class="hint">「docx 转换」把 .doc 另存为 .docx，原 .doc 保留不动。<br>
+        「doc 文件清理」先排查候选文件，确认后才送入回收站。</div>
+    </div>
+
+    <div class="card" id="cleanCard" style="display:none">
+      <h2><span class="num">!</span>清理排查结果</h2>
+      <div class="stats" id="cleanStats"></div>
+      <div class="tblwrap">
+        <table>
+          <thead><tr>
+            <th style="width:34px"><input type="checkbox" id="allChk" onchange="toggleAll(this)" style="accent-color:var(--acc)"></th>
+            <th>文件</th><th style="width:80px">大小</th><th style="width:200px">原因</th>
+          </tr></thead>
+          <tbody id="cleanBody"></tbody>
+        </table>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="danger" onclick="askDelete()">确认清理选中文件</button>
+        <button class="sm" onclick="hideClean()">收起</button>
+      </div>
+      <div class="hint">删除会送进 Windows 回收站，可以还原。</div>
+    </div>
+
+    <div class="card">
+      <h2><span class="num">2</span>查找与替换</h2>
+      <div id="kwList"></div>
+      <div class="row">
+        <button class="sm" onclick="addKw()">+ 添加关键词</button>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <label class="chk" style="color:var(--tx)"><input type="checkbox" id="fuzzy"> 模糊匹配</label>
+        <span style="font-size:12px;color:var(--tx3)">日期格式等价 + 忽略字间空格</span>
+      </div>
+      <div class="row">
+        <button class="primary needs-engine" onclick="doScan()" disabled>开始查找</button>
+        <button class="danger needs-engine" onclick="askReplace()" disabled>执行替换</button>
+        <label class="chk" style="margin-left:6px"><input type="checkbox" id="backup" checked> 替换前备份</label>
+      </div>
+      <div class="hint">「查找」只统计不改文件。左格填查找词，右格填替换成什么；右格留空则只查不换。<br>
+        勾选「模糊匹配」后：<code>2025年1月20日</code> 能匹配 <code>2025.01.20</code> / <code>2025-1-20</code> / <code>二〇二五年一月二十日</code>；
+        <code>张二字</code> 能匹配 <code>张 二 字</code>。命中后统一替换成你填的值。</div>
+      <div class="hint" style="margin-top:10px">任务长时间没动静（进度条不动、日志不再新增）时，
+        点右上角「<b style="color:var(--err)">中断并清理进程</b>」：结束残留的后台 Word 进程、清掉 <code>~$</code> 锁文件，
+        任务立刻结束；你自己正开着的 Word 不会被关掉。</div>
+    </div>
+
+    <div class="card">
+      <h2><span class="num">3</span>结果统计</h2>
+      <div class="stats" id="stats"><div class="empty" style="grid-column:1/-1">还没有执行任务</div></div>
+      <div id="detailWrap" style="margin-top:12px"></div>
+    </div>
+
+  </div>
+
+  <aside class="right">
+    <div class="logbar">
+      <span>执行日志</span>
+      <span class="spacer"></span>
+      <button class="sm" id="fAll" onclick="setLogFilter('all')">全部</button>
+      <button class="sm" id="fIssue" onclick="setLogFilter('issue')">只看问题</button>
+      <button class="sm" onclick="clearLogView()">清屏</button>
+      <button class="sm" onclick="location.href='/api/download-log'">下载</button>
+    </div>
+    <div id="log"></div>
+  </aside>
+</main>
+
+<footer>
+  <div class="bar"><i id="bar"></i></div>
+  <div class="footinfo">
+    <span id="progText">就绪</span>
+    <span class="cur" id="curFile"></span>
+  </div>
+  <div id="stuckBar" style="display:none"></div>
+</footer>
+
+<div id="dirModal">
+  <div class="dlg" style="max-width:640px">
+    <h3><span class="ico" style="color:var(--acc)">▸</span>选择文件夹</h3>
+    <div class="row">
+      <button class="sm" onclick="dirUp()">↑ 上一级</button>
+      <div class="dirbox" id="dirCur">此电脑</div>
+    </div>
+    <div class="dirlist" id="dirList"></div>
+    <div class="acts" style="margin-top:16px">
+      <button onclick="closeDir()">取消</button>
+      <button class="primary" onclick="dirConfirm()">就用这个目录</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal">
+  <div class="dlg">
+    <h3><span class="ico">!</span><span id="dlgTitle">确认</span></h3>
+    <div class="body" id="dlgBody"></div>
+    <div class="acts">
+      <button onclick="closeModal()">取消</button>
+      <button class="danger" id="dlgOk">确认</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let seq = 0, polling = false, lastTask = '';
+let cleanItems = [];
+
+const $ = id => document.getElementById(id);
+
+function setBadge(txt, cls){ const b=$('badge'); b.textContent=txt; b.className='badge'+(cls?' '+cls:''); }
+
+function addKw(f='', r=''){
+  const d = document.createElement('div');
+  d.className = 'kwrow';
+  d.innerHTML = `<input type="text" class="kf" placeholder="查找内容" value="${esc(f)}">
+                 <input type="text" class="kr" placeholder="替换为（留空=只查不换）" value="${esc(r)}">
+                 <button class="x" onclick="this.parentNode.remove()" title="删除">×</button>`;
+  $('kwList').appendChild(d);
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function getKws(){ return [...document.querySelectorAll('.kwrow')].map(d=>({
+  f: d.querySelector('.kf').value.trim(), r: d.querySelector('.kr').value.trim() })); }
+
+// ---- 文档引擎：后台自动检测，结果写日志，通过后才放开按钮 ----
+let engineReady = false;
+
+function applyEngineState(){
+  document.querySelectorAll('.needs-engine').forEach(b=>{ b.disabled = !engineReady; });
+}
+
+async function checkEngine(){
+  logLine('head', '检测文档引擎…');
+  try{
+    const j = await (await fetch('/api/engines')).json();
+
+    if(j.wps_available){
+      logLine('ok', '  WPS Office      可用');
+    }else{
+      logLine('info', '  WPS Office      未检测到');
+    }
+
+    if(j.word_available){
+      logLine('ok', '  Microsoft Word  可用');
+    }else if(j.word_hijacked){
+      logLine('info', '  Microsoft Word  未安装（Word 接口被 WPS 接管，不影响使用）');
+    }else{
+      logLine('info', '  Microsoft Word  未检测到');
+    }
+
+    if(j.has_engine){
+      engineReady = true;
+      logLine('ok', '引擎就绪，优先使用 ' + (j.wps_available ? 'WPS Office' : 'Microsoft Word') + '，可以开始操作');
+    }else{
+      engineReady = false;
+      logLine('error', '没有可用的文档引擎，转换 / 查找 / 替换已禁用。请先安装 WPS Office 或 Microsoft Office。');
+      alert('需要安装 WPS 或者 Microsoft Office，任务无法开始。\n\n检测结果：本机既没有安装 WPS Office，也没有安装 Microsoft Word。');
+    }
+  }catch(e){
+    engineReady = false;
+    logLine('error', '引擎检测失败：' + e.message);
+    alert('文档引擎检测失败，任务无法开始。\n\n' + e.message);
+  }
+  applyEngineState();
+}
+
+let dirState = {path:'', parent:'', isRoot:true, dirs:[]};
+
+function pickFolder(){ openDir(''); }
+
+async function openDir(p){
+  $('dirModal').classList.add('on');
+  $('dirCur').textContent = p ? p : '此电脑（选择磁盘）';
+  $('dirList').innerHTML = '<div class="empty">读取中...</div>';
+  try{
+    const r = await fetch('/api/list-dir?path=' + encodeURIComponent(p));
+    const j = await r.json();
+    if(j.error){
+      $('dirList').innerHTML = '<div class="empty">' + esc(j.error) + '</div>';
+      return;
+    }
+    dirState = j;
+    $('dirCur').textContent = j.is_root ? '此电脑（选择磁盘）' : j.path;
+    const items = j.dirs || [];
+    if(!items.length){
+      $('dirList').innerHTML = '<div class="empty">这个目录下没有子文件夹</div>';
+      return;
+    }
+    $('dirList').innerHTML = items.map((d,i)=>
+      '<div class="diritem" data-i="' + i + '"><span class="ico">▸</span><span>' + esc(d.name) + '</span></div>'
+    ).join('');
+    $('dirList').querySelectorAll('.diritem').forEach(el=>{
+      el.onclick = ()=> openDir(items[+el.dataset.i].path);
+    });
+  }catch(e){
+    $('dirList').innerHTML = '<div class="empty">读取失败：' + esc(e.message) + '</div>';
+  }
+}
+
+function dirUp(){
+  if(dirState.is_root) return;
+  openDir(dirState.parent || '');
+}
+
+function closeDir(){ $('dirModal').classList.remove('on'); }
+
+function dirConfirm(){
+  if(dirState.is_root || !dirState.path){
+    alert('请先进入一个磁盘或文件夹，再点「就用这个目录」');
+    return;
+  }
+  $('root').value = dirState.path;
+  closeDir();
+}
+
+function post(url, body){
+  return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(async r=>{
+      const j = await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(j.msg || ('HTTP '+r.status));
+      return j;
+    });
+}
+
+function needRoot(){ const v=$('root').value.trim(); if(!v){ alert('请先选择目录'); return null; } return v; }
+
+async function doConvert(){
+  const root = needRoot(); if(!root) return;
+  try{
+    await post('/api/convert',{root, recursive:$('recursive').checked});
+    startPoll();
+  }catch(e){ alert('启动失败：'+e.message); }
+}
+
+async function doCleanupScan(){
+  const root = needRoot(); if(!root) return;
+  $('cleanCard').style.display='none';
+  try{
+    await post('/api/cleanup-scan',{root, recursive:$('recursive').checked,
+      check_pair:true, check_dup:true, check_lock:true});
+    startPoll();
+  }catch(e){ alert('启动失败：'+e.message); }
+}
+
+function toggleAll(cb){ document.querySelectorAll('.ck').forEach(x=>x.checked=cb.checked); }
+
+function hideClean(){ $('cleanCard').style.display='none'; }
+
+function askDelete(){
+  const sel = [...document.querySelectorAll('.ck')].filter(x=>x.checked).map(x=>x.dataset.path);
+  if(!sel.length){ alert('没有勾选任何文件'); return; }
+  let size = 0;
+  cleanItems.forEach(i=>{ if(sel.includes(i.path)) size += i.size; });
+  openModal('确认清理',
+    `<div class="warnbox">将把 <b>${sel.length}</b> 个文件（共 ${fmtSize(size)}）送入 Windows <b>回收站</b>。<br>
+     可以从回收站还原，但请确认这些文件确实不需要保留。</div>
+     <div style="max-height:180px;overflow:auto;font-size:12px;color:var(--tx3)">
+       ${sel.slice(0,40).map(p=>esc(p)).join('<br>')}${sel.length>40?'<br>...':''}
+     </div>`,
+    async ()=>{
+      const root = $('root').value.trim();
+      closeModal();
+      try{
+        await post('/api/cleanup-delete',{root, paths:sel});
+        startPoll();
+      }catch(e){ alert('启动失败：'+e.message); }
+    });
+}
+
+async function doScan(){
+  const root = needRoot(); if(!root) return;
+  const kws = getKws().map(x=>x.f).filter(Boolean);
+  if(!kws.length){ alert('请至少添加一个查找关键词'); return; }
+  try{
+    await post('/api/scan',{root, recursive:$('recursive').checked, keywords:kws, fuzzy:$('fuzzy').checked});
+    startPoll();
+  }catch(e){ alert('启动失败：'+e.message); }
+}
+
+function askReplace(){
+  const root = needRoot(); if(!root) return;
+  const pairs = getKws().filter(x=>x.f);
+  if(!pairs.length){ alert('请至少添加一个查找关键词'); return; }
+  const empty = pairs.filter(x=>!x.r);
+  openModal('确认执行替换',
+    `<div class="warnbox">将对目录内所有 doc/docx 执行 <b>${pairs.length}</b> 条规则，<b>直接修改原文件</b>。
+     ${$('backup').checked?'<br>已开启备份，原文件会复制到 <b>_备份_时间戳</b> 目录。':'<br><b>未开启备份，改动无法撤回。</b>'}
+     ${empty.length?'<br>注意：有 '+empty.length+' 条规则的「替换为」是空的，这些只查不换。':''}
+     ${$('fuzzy').checked?'<br><b>模糊匹配已开启</b>：日期格式等价 + 忽略字间空格，所有命中处统一替换成你填的值。':''}</div>
+     <div style="font-size:12.5px;line-height:2">
+       ${pairs.map(p=>`<span class="tag">${esc(p.f)}</span> → <b>${esc(p.r||'（不替换）')}</b>`).join('<br>')}
+     </div>
+     <div style="margin-top:14px;font-size:12.5px;color:var(--tx3)">
+       建议先点「开始查找」看清命中次数，确认没有误伤再替换。
+     </div>`,
+    async ()=>{
+      closeModal();
+      try{
+        await post('/api/replace',{root, recursive:$('recursive').checked,
+          pairs:pairs.map(p=>[p.f,p.r]), backup:$('backup').checked, fuzzy:$('fuzzy').checked});
+        startPoll();
+      }catch(e){ alert('启动失败：'+e.message); }
+    });
+}
+
+// ---- 卡死中断：结束残留进程 + 清理锁文件 ----
+async function doKill(force){
+  logLine('warn', force ? '强制中断：连有窗口的实例一起结束…' : '正在中断任务并清理进程…');
+  try{
+    const j = await post('/api/kill-stuck', {root: $('root').value.trim(), force: !!force});
+    logLine('warn', `已结束后台进程 ${j.killed.length} 个，跳过 ${j.skipped.length} 个，清理锁文件 ${j.locks_removed} 个`);
+    const left = j.still_running && Object.keys(j.still_running) || [];
+    if(!force && left.length){
+      const desc = left.map(n => n + '×' + j.still_running[n].length).join('、');
+      if(confirm(`还有 ${desc} 没退出（通常是卡着对话框的实例）。\n\n要不要连这些实例一起结束？\n（你自己正在编辑的 Word 文档也会被关掉，请先保存）`)){
+        return doKill(true);
+      }
+    }
+    $('stuckBar').style.display = 'none';
+  }catch(e){
+    alert('清理失败：' + e.message);
+  }
+  polling = false;
+  startPoll();
+}
+
+function askKill(){
+  const running = polling;
+  openModal('确认中断？',
+    `<div class="warnbox"><b>确定要现在中断并清理进程吗？</b><br>
+      点「确认中断」会立刻做这几件事，无法撤销：<br>
+      1. 结束<b>后台运行</b>的 Word / Excel / WPS 进程（工具自己起的那些）；<br>
+      2. 删掉所选目录里的 <b>~$</b> 锁文件；<br>
+      3. ${running ? '当前任务<b>马上结束</b>' : '当前没有在跑的任务，只做上面两项清理'}
+         （记为中断，已经写好的文件不受影响，卡住的那份记为「打不开」）。<br><br>
+      你自己打开着编辑的 Word 窗口默认<b>不会</b>被关掉。<br>
+      ⚠️ 如果它正巧在保存某一份文档，那一份可能写残——替换任务有备份可恢复。</div>
+     <div style="font-size:12.5px;color:var(--tx3);line-height:1.9">
+      什么时候该用它：进度条长时间不动、日志不再新增、界面上又看不到任何 Word 弹窗。<br>
+      不确定的话先点「取消」，再等一会儿看看进度条有没有在走。</div>`,
+    async ()=>{ closeModal(); await doKill(false); },
+    '确认中断');
+}
+
+function setStuck(s){
+  const bar = $('stuckBar');
+  if(s && s.running && s.stuck_seconds >= 30){
+    bar.style.display = 'block';
+    bar.innerHTML = `<b>「${esc(s.stuck_file || '当前文件')}」已 ${Math.round(s.stuck_seconds)} 秒无响应</b>
+      （阈值 ${s.stuck_limit || 90} 秒）。若任务一直不动、界面上也看不到任何 Word 弹窗，
+      请点「中断并清理进程」：结束没有窗口的后台进程、清掉 ~$ 锁文件，任务会立刻结束，已写入的文件不受影响。
+      <button class="danger sm" onclick="askKill()">中断并清理进程</button>`;
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function openModal(title, body, onOk, okText){  $('dlgTitle').textContent = title;
+  $('dlgBody').innerHTML = body;
+  $('dlgOk').onclick = onOk;
+  $('dlgOk').textContent = okText || '确认';
+  $('modal').classList.add('on');
+}
+function closeModal(){ $('modal').classList.remove('on'); }
+
+function clearLogView(){ $('log').innerHTML=''; }
+
+// ---- 日志滚动跟随与过滤 ----
+let autoScroll = true;
+let logFilter = 'all';
+
+function setLogFilter(f){
+  logFilter = f;
+  $('fAll').classList.toggle('primary', f === 'all');
+  $('fIssue').classList.toggle('primary', f === 'issue');
+  document.querySelectorAll('#log > div').forEach(d=>{
+    if(f === 'issue'){
+      d.style.display = (d.classList.contains('warn') || d.classList.contains('error')) ? '' : 'none';
+    } else {
+      d.style.display = '';
+    }
+  });
+}
+
+function nearBottom(box){
+  return (box.scrollHeight - box.scrollTop - box.clientHeight) < 50;
+}
+
+function appendLog(l){
+  const box = $('log');
+  const d = document.createElement('div');
+  d.className = (l.level || 'info');
+  d.innerHTML = '<span class="t">' + l.t + '</span><span class="m">' + esc(l.msg) + '</span>';
+  if(logFilter === 'issue' && !(d.classList.contains('warn') || d.classList.contains('error'))){
+    d.style.display = 'none';
+  }
+  box.appendChild(d);
+  return d;
+}
+
+function logLine(level, msg){
+  const box = $('log');
+  const wasBottom = nearBottom(box);
+  const d = document.createElement('div');
+  d.className = level;
+  d.innerHTML = `<span class="t">${new Date().toLocaleTimeString('zh-CN',{hour12:false})}</span><span class="m">${esc(msg)}</span>`;
+  if(!(logFilter === 'issue' && !(level === 'warn' || level === 'error'))) box.appendChild(d);
+  if(wasBottom && autoScroll) box.scrollTop = box.scrollHeight;
+}
+
+function resetResult(){
+  // 新任务开始就清掉上一次的统计，否则会看到「点了查找却显示转换成功 2」这种残留
+  $('stats').innerHTML = '<div class="empty" style="grid-column:1/-1;padding:18px 0">任务执行中，结果在完成后显示…</div>';
+  $('detailWrap').innerHTML = '';
+  $('cleanCard').style.display = 'none';
+}
+
+function startPoll(){
+  resetResult();
+  if(!polling){ polling = true; poll(); }
+}
+
+async function poll(){
+  try{
+    const r = await fetch('/api/status?since='+seq);
+    const s = await r.json();
+
+    // 后端重启或序号回退时，重置游标并清屏，否则新旧日志会混在一起
+    if(typeof s.seq === 'number' && s.seq < seq){
+      seq = 0;
+      $('log').innerHTML = '';
+      logLine('warn', '检测到服务重启，日志视图已清空并重新同步');
+      return poll();
+    }
+
+    if(s.logs && s.logs.length){
+      const box = $('log');
+      const wasBottom = nearBottom(box);
+      s.logs.forEach(l=> appendLog(l));
+      while(box.childElementCount > 2000) box.removeChild(box.firstChild);
+      if(wasBottom && autoScroll) box.scrollTop = box.scrollHeight;
+    }
+    if(typeof s.seq === 'number') seq = s.seq;
+
+    if(s.running){
+      const pct = s.total > 0 ? Math.round(s.done / s.total * 100) : 0;
+      $('bar').style.width = pct + '%';
+      $('progText').textContent = `${s.task_label}  ${s.done}/${s.total}  (${pct}%)`;
+      $('curFile').textContent = s.current || '';
+      $('elapsed').textContent = s.elapsed ? '已用 ' + s.elapsed + ' 秒' : '';
+      setBadge('执行中', 'run');
+      document.querySelectorAll('button').forEach(b=>{
+        if(b.classList.contains('x') || b.classList.contains('keep-enabled')) return;
+        b.disabled = true;
+      });
+      setStuck(s);
+      setTimeout(poll, 550);
+    } else {
+      $('bar').style.width = s.result && !s.result.error ? '100%' : $('bar').style.width;
+      $('progText').textContent = s.finished_at ? '已完成' : '就绪';
+      $('curFile').textContent = '';
+      $('elapsed').textContent = '';
+      setStuck(s);
+      document.querySelectorAll('button').forEach(b=>{
+        if(b.classList.contains('x')) return;
+        b.disabled = b.classList.contains('needs-engine') ? !engineReady : false;
+      });
+      polling = false;
+      if(s.result && Object.keys(s.result).length) renderResult(s.task, s.result);
+      setBadge(s.result && s.result.error ? '出错' : (s.result && Object.keys(s.result).length ? '完成' : '空闲'),
+               s.result && s.result.error ? 'err' : (s.result && Object.keys(s.result).length ? 'ok' : ''));
+      if(s.result && s.result.error) logLine('error', '任务出错：' + s.result.error);
+    }
+  }catch(e){
+    polling = false;
+    setBadge('连接断开','err');
+    logLine('error','状态获取失败：'+e);
+  }
+}
+
+function fmtSize(n){
+  if(n < 1024) return n + ' B';
+  if(n < 1048576) return (n/1024).toFixed(1) + ' KB';
+  if(n < 1073741824) return (n/1048576).toFixed(1) + ' MB';
+  return (n/1073741824).toFixed(2) + ' GB';
+}
+
+function stat(k, v, cls){ return `<div class="stat"><div class="k">${k}</div><div class="v ${cls||''}">${v}</div></div>`; }
+
+function renderResult(task, r){
+  const S = $('stats'), D = $('detailWrap');
+  D.innerHTML = '';
+
+  if(task === 'convert'){
+    S.innerHTML = stat('扫描 doc', r.total) + stat('转换成功', r.ok, 'ok')
+      + stat('跳过', r.skip, r.skip?'warn':'') + stat('失败', r.fail, r.fail?'err':'');
+    if(r.fails && r.fails.length){
+      D.innerHTML = '<div class="tblwrap"><table><thead><tr><th>失败文件</th><th>原因</th></tr></thead><tbody>'
+        + r.fails.map(f=>`<tr><td>${esc(f.file)}</td><td>${esc(f.err)}</td></tr>`).join('') + '</tbody></table></div>';
+    }
+  }
+
+  else if(task === 'cleanup-scan'){
+    cleanItems = r.items || [];
+    S.innerHTML = stat('候选文件', r.count, r.count?'warn':'ok') + stat('合计大小', r.total_size_text||'0');
+    const tb = $('cleanBody');
+    tb.innerHTML = cleanItems.length
+      ? cleanItems.map(i=>`<tr>
+          <td><input type="checkbox" class="ck" data-path="${esc(i.path)}" checked style="accent-color:var(--acc)"></td>
+          <td title="${esc(i.path)}">${esc(i.rel)}</td>
+          <td class="n">${i.size_text}</td>
+          <td>${esc(i.reason)}</td></tr>`).join('')
+      : '<tr><td colspan="4" class="empty">没有发现需要清理的文件</td></tr>';
+    $('allChk').checked = cleanItems.length > 0;
+    $('cleanCard').style.display = 'block';
+  }
+
+  else if(task === 'cleanup-delete'){
+    S.innerHTML = stat('已送回收站', r.ok, 'ok') + stat('失败', r.fail, r.fail?'err':'');
+    if(r.fails && r.fails.length){
+      D.innerHTML = '<div class="tblwrap"><table><thead><tr><th>文件</th><th>原因</th></tr></thead><tbody>'
+        + r.fails.map(f=>`<tr><td>${esc(f.file)}</td><td>${esc(f.err)}</td></tr>`).join('') + '</tbody></table></div>';
+    }
+    $('cleanCard').style.display = 'none';
+  }
+
+  else if(task === 'scan'){
+    S.innerHTML = stat('扫描文件', r.files) + stat('命中文件', r.hit_files, r.hit_files?'warn':'ok')
+      + stat('命中总次数', r.total_hits, r.total_hits?'warn':'ok')
+      + stat('可替换', r.can_replace?'是':'否', r.can_replace?'ok':'');
+    let h = '';
+    if(r.keywords && r.keywords.length){
+      h += '<div class="tblwrap"><table><thead><tr><th>关键词</th><th style="width:110px">命中文件</th><th style="width:110px">出现次数</th></tr></thead><tbody>'
+        + r.keywords.map(k=>`<tr><td>${esc(k.kw)}</td><td class="n">${k.files}</td><td class="n">${k.total}</td></tr>`).join('')
+        + '</tbody></table></div>';
+    }
+    if(r.hits && r.hits.length){
+      h += '<div class="tblwrap"><table><thead><tr><th>文件</th><th>关键词</th><th style="width:80px">次数</th></tr></thead><tbody>'
+        + r.hits.map(x=>`<tr><td>${esc(x.file)}</td><td>${esc(x.keyword)}</td><td class="n">${x.count}</td></tr>`).join('')
+        + '</tbody></table></div>';
+    }
+    D.innerHTML = h || '<div class="empty">没有命中任何关键词</div>';
+  }
+
+  else if(task === 'replace'){
+    S.innerHTML = stat('扫描文件', r.files) + stat('已修改', r.changed, r.changed?'ok':'')
+      + stat('替换处数', r.total_hits, r.total_hits?'ok':'') + stat('失败', r.fail, r.fail?'err':'');
+    let h = '';
+    if(r.backup_dir) h += `<div class="hint">备份目录：${esc(r.backup_dir)}</div>`;
+    if(r.details && r.details.length){
+      h += '<div class="tblwrap"><table><thead><tr><th>命中明细</th></tr></thead><tbody>'
+        + r.details.map(d=>`<tr><td>${esc(d)}</td></tr>`).join('') + '</tbody></table></div>';
+    }
+    if(r.fails && r.fails.length){
+      h += '<div class="tblwrap"><table><thead><tr><th>失败文件</th><th>原因</th></tr></thead><tbody>'
+        + r.fails.map(f=>`<tr><td>${esc(f.file)}</td><td>${esc(f.err)}</td></tr>`).join('') + '</tbody></table></div>';
+    }
+    D.innerHTML = h;
+  }
+}
+
+addKw('张三','李四');
+$('log').addEventListener('scroll', ()=>{ autoScroll = nearBottom($('log')); });
+setLogFilter('all');
+
+// 模糊匹配开关：开启前提醒可能误伤
+$('fuzzy').addEventListener('change', function(){
+  if(!this.checked) return;
+  const ok = confirm(
+    '模糊匹配会扩大匹配范围，可能出现误伤：\n\n' +
+    '· 不同写法的日期视为同一个\n' +
+    '   （2025年1月20日 = 2025.01.20 = 二〇二五年一月二十日）\n' +
+    '· 文字中间的空格会被忽略\n' +
+    '   （搜索「张二字」能匹配「张 二 字」）\n\n' +
+    '建议先点「开始查找」核对命中数量，确认无误再执行替换。\n\n' +
+    '是否确认开启模糊匹配？'
+  );
+  if(!ok){
+    this.checked = false;
+    logLine('info', '已取消开启模糊匹配');
+  }else{
+    logLine('warn', '模糊匹配已开启：日期格式等价 + 忽略字间空格。替换前请先查找核对，避免误伤。');
+  }
+});
+
+checkEngine();
+// 页面打开时先拉一次，把历史日志显示出来
+poll();
+$('root').addEventListener('keydown', e=>{ if(e.key==='Enter') e.target.blur(); });
+</script>
+</body>
+</html>
