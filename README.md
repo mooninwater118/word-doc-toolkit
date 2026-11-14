@@ -44,7 +44,7 @@
 
 ### 方式一：下载打包版（推荐）
 
-到 [Releases](../../releases) 下载 `文档批量处理工具.exe`，双击运行。
+到 [Releases](../../releases) 下载 `word-doc-toolkit.exe`，双击运行。
 
 - 单文件，**不需要安装 Python**
 - 首次启动慢 3~8 秒（自解压），之后正常
