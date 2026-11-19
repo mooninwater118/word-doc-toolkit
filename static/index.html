@@ -45,6 +45,8 @@ button:disabled{opacity:.38;cursor:not-allowed}
 button.primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:500}
 button.primary:hover:not(:disabled){background:#5ea8ff;color:#fff}
 button.danger{background:rgba(240,101,101,.12);border-color:rgba(240,101,101,.5);color:var(--err)}
+/* 流程门控：看起来是禁用态，但仍可点击，点了会说明为什么还不能用 */
+button.locked{opacity:.42;cursor:not-allowed;filter:grayscale(.55)}
 button.danger:hover:not(:disabled){background:rgba(240,101,101,.22);color:var(--err)}
 button.sm{padding:5px 11px;font-size:12px}
 label.chk{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--tx2);cursor:pointer;user-select:none}
@@ -115,6 +117,7 @@ color:var(--err);font-size:12.5px;padding:9px 16px;line-height:1.6}
 
 <header>
   <h1>文档批量处理工具</h1>
+  <span class="tiny" id="verTag" style="opacity:.5;font-size:11px" title="程序版本"></span>
   <span class="badge" id="badge">空闲</span>
   <span class="spacer"></span>
   <span class="tiny" id="elapsed"></span>
@@ -133,7 +136,7 @@ color:var(--err);font-size:12.5px;padding:9px 16px;line-height:1.6}
       </div>
       <label class="chk"><input type="checkbox" id="recursive" checked> 遍历所有子目录</label>
       <div class="row" style="margin-top:14px">
-        <button class="primary needs-engine" onclick="doConvert()" disabled>docx 转换</button>
+        <button class="primary needs-engine" id="btnConvert" onclick="doConvert()" disabled>docx 转换</button>
         <button onclick="doCleanupScan()">doc 文件清理</button>
       </div>
       <div class="hint">「docx 转换」把 .doc 另存为 .docx，原 .doc 保留不动。<br>
@@ -170,10 +173,11 @@ color:var(--err);font-size:12.5px;padding:9px 16px;line-height:1.6}
         <span style="font-size:12px;color:var(--tx3)">日期格式等价 + 忽略字间空格</span>
       </div>
       <div class="row">
-        <button class="primary needs-engine" onclick="doScan()" disabled>开始查找</button>
-        <button class="danger needs-engine" onclick="askReplace()" disabled>执行替换</button>
+        <button class="primary needs-engine" id="btnScan" onclick="doScan()" disabled>开始查找</button>
+        <button class="danger needs-engine" id="btnReplace" onclick="askReplace()" disabled>执行替换</button>
         <label class="chk" style="margin-left:6px"><input type="checkbox" id="backup" checked> 替换前备份</label>
       </div>
+      <div class="hint" style="color:var(--warn);margin-bottom:8px">需要先在上方点一次「docx 转换」，这两个按钮才能用；换了目录要重新转一次。</div>
       <div class="hint">「查找」只统计不改文件。左格填查找词，右格填替换成什么；右格留空则只查不换。<br>
         勾选「模糊匹配」后：<code>2025年1月20日</code> 能匹配 <code>2025.01.20</code> / <code>2025-1-20</code> / <code>二〇二五年一月二十日</code>；
         <code>张二字</code> 能匹配 <code>张 二 字</code>。命中后统一替换成你填的值。</div>
@@ -262,8 +266,95 @@ function getKws(){ return [...document.querySelectorAll('.kwrow')].map(d=>({
 // ---- 文档引擎：后台自动检测，结果写日志，通过后才放开按钮 ----
 let engineReady = false;
 
+// ---- 流程门控：必须先跑完一次 docx 转换，才允许查找/替换 ----
+// 状态只存在当前页面：刷新、换目录都会回到"未转换"，需要重新点一次
+let convertDone = false;        // 当前目录是否已成功跑完一次转换
+let convertDir = '';            // 完成转换时用的目录
+let pendingConvertDir = '';     // 提交转换时记录的目录（防止任务中途改输入框）
+
+const NEED_CONVERT_MSG = '需要先执行「docx 转换」，才能进行查找和替换。\n\n'
+  + '即使目录里已经有 docx 文件，也请先点一次转换——没有 .doc 文件时会很快跳过，不会影响已有文件。';
+
 function applyEngineState(){
   document.querySelectorAll('.needs-engine').forEach(b=>{ b.disabled = !engineReady; });
+  applyGateState();
+}
+
+// 门控放行条件：当前目录已经成功跑完过一次 docx 转换
+function gateOK(){
+  const el = $('root');
+  const dir = ((el && el.value) || '').trim();
+  return !!dir && convertDone && dir === convertDir;
+}
+
+function applyGateState(){
+  // 引擎就绪但还没跑过转换 → 按钮显示为禁用态，但仍可点击，点了会说明原因
+  const locked = engineReady && !gateOK();
+  ['btnScan','btnReplace'].forEach(id=>{
+    const b = $(id);
+    if(!b) return;
+    b.disabled = !engineReady;            // 引擎没就绪才是真禁用
+    b.classList.toggle('locked', locked);
+  });
+}
+
+// ---- 刷新续接：目录/关键词/勾选/门控状态存 localStorage，刷新后自动恢复 ----
+const LS_KEY = 'doctoolkit_state_v1';
+
+// 后端本次进程的会话标识，从 /api/status 拿
+let backendSessionId = '';
+let stateRestored = false;
+
+function saveState(){
+  if(!backendSessionId) return;    // 还没拿到会话标识，先别存（免得存进空值）
+  try{
+    localStorage.setItem(LS_KEY, JSON.stringify({
+      sessionId: backendSessionId,
+      root: ($('root').value || '').trim(),
+      kws: getKws(),
+      recursive: $('recursive').checked,
+      fuzzy: $('fuzzy').checked,
+      backup: $('backup').checked,
+      convertDone: convertDone,
+      convertDir: convertDir
+    }));
+  }catch(e){}
+}
+
+let saveTimer = null;
+function saveStateSoon(){ clearTimeout(saveTimer); saveTimer = setTimeout(saveState, 300); }
+
+// 只在首次拿到后端状态时执行一次。
+// 会话标识一致 = 程序没重启、只是刷新了浏览器 → 恢复上次的配置；
+// 不一致 = 程序重启过（或从没存过）→ 清掉旧配置，按全新启动处理。
+function restoreOnce(sid){
+  if(stateRestored) return;
+  stateRestored = true;
+  if(!sid) return;
+  backendSessionId = sid;
+
+  let s;
+  try{ s = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); }catch(e){ s = null; }
+
+  if(!s || s.sessionId !== sid){
+    try{ localStorage.removeItem(LS_KEY); }catch(e){}
+    return;                      // 全新启动：目录、关键词、门控全部保持初始状态
+  }
+
+  if(s.root) $('root').value = s.root;
+  if(typeof s.recursive === 'boolean') $('recursive').checked = s.recursive;
+  if(typeof s.fuzzy === 'boolean') $('fuzzy').checked = s.fuzzy;
+  if(typeof s.backup === 'boolean') $('backup').checked = s.backup;
+
+  if(Array.isArray(s.kws) && s.kws.length){
+    $('kwList').innerHTML = '';
+    s.kws.forEach(k=>addKw(k.f || '', k.r || ''));
+  }
+
+  // 门控状态一并恢复。gateOK() 会再比对目录，目录换了照样不给放行
+  convertDone = !!s.convertDone;
+  convertDir = s.convertDir || '';
+  applyGateState();
 }
 
 async function checkEngine(){
@@ -347,6 +438,7 @@ function dirConfirm(){
     return;
   }
   $('root').value = dirState.path;
+  onDirChanged();        // 换了目录，转换门控要重算（同时清掉"已转换"标记）
   closeDir();
 }
 
@@ -363,6 +455,7 @@ function needRoot(){ const v=$('root').value.trim(); if(!v){ alert('请先选择
 
 async function doConvert(){
   const root = needRoot(); if(!root) return;
+  pendingConvertDir = root;              // 记下本次转换针对哪个目录
   try{
     await post('/api/convert',{root, recursive:$('recursive').checked});
     startPoll();
@@ -406,6 +499,7 @@ function askDelete(){
 
 async function doScan(){
   const root = needRoot(); if(!root) return;
+  if(!gateOK()){ alert(NEED_CONVERT_MSG); return; }
   const kws = getKws().map(x=>x.f).filter(Boolean);
   if(!kws.length){ alert('请至少添加一个查找关键词'); return; }
   try{
@@ -416,6 +510,7 @@ async function doScan(){
 
 function askReplace(){
   const root = needRoot(); if(!root) return;
+  if(!gateOK()){ alert(NEED_CONVERT_MSG); return; }
   const pairs = getKws().filter(x=>x.f);
   if(!pairs.length){ alert('请至少添加一个查找关键词'); return; }
   const empty = pairs.filter(x=>!x.r);
@@ -561,6 +656,10 @@ async function poll(){
   try{
     const r = await fetch('/api/status?since='+seq);
     const s = await r.json();
+    restoreOnce(s.session_id);   // 首次拿到会话标识时决定：恢复上次配置，还是按全新启动
+    if(s.version && $('verTag') && $('verTag').textContent !== 'v' + s.version){
+      $('verTag').textContent = 'v' + s.version;
+    }
 
     // 后端重启或序号回退时，重置游标并清屏，否则新旧日志会混在一起
     if(typeof s.seq === 'number' && s.seq < seq){
@@ -588,6 +687,9 @@ async function poll(){
       setBadge('执行中', 'run');
       document.querySelectorAll('button').forEach(b=>{
         if(b.classList.contains('x') || b.classList.contains('keep-enabled')) return;
+        // 弹窗里的按钮绝不能锁：任务卡住时用户正是靠它中断的；
+        // 目录选择弹窗的取消同理，否则会卡在一个关不掉的弹窗上
+        if(b.closest('#modal, #dirModal')) return;
         b.disabled = true;
       });
       setStuck(s);
@@ -598,10 +700,21 @@ async function poll(){
       $('curFile').textContent = '';
       $('elapsed').textContent = '';
       setStuck(s);
+      // 转换任务正常跑完（个别文件失败不算异常）→ 放行查找/替换。
+      // 必须本页面点过转换（pendingConvertDir 有值）才算数：
+      // 否则刷新时会看到后端上一次的结果而直接放行，等于没转也放行。
+      if(s.task === 'convert' && s.result && !s.result.error && pendingConvertDir){
+        convertDone = true;
+        convertDir = pendingConvertDir;
+        pendingConvertDir = '';
+        saveState();          // 立刻落盘，刷新后不用重新转换
+        logLine('ok', 'docx 转换已完成，现在可以开始查找和执行替换');
+      }
       document.querySelectorAll('button').forEach(b=>{
         if(b.classList.contains('x')) return;
         b.disabled = b.classList.contains('needs-engine') ? !engineReady : false;
       });
+      applyGateState();
       polling = false;
       if(s.result && Object.keys(s.result).length) renderResult(s.task, s.result);
       setBadge(s.result && s.result.error ? '出错' : (s.result && Object.keys(s.result).length ? '完成' : '空闲'),
@@ -697,8 +810,27 @@ function renderResult(task, r){
 }
 
 addKw('张三','李四');
+// 不在这里恢复状态——要等首次 /api/status 拿到后端会话标识，
+// 才能判断是「刷新浏览器」还是「程序重启过」（见 poll 里的 restoreOnce）
 $('log').addEventListener('scroll', ()=>{ autoScroll = nearBottom($('log')); });
 setLogFilter('all');
+
+// 任何输入/勾选变化都记下来（防抖 300ms，避免打字时频繁写盘）
+document.addEventListener('input', saveStateSoon);
+document.addEventListener('change', saveStateSoon);
+
+// 目录变了就重置门控：手输、浏览选目录都走这里，避免两条路径行为不一致
+function onDirChanged(){
+  const dir = ($('root').value || '').trim();
+  if(convertDone && dir !== convertDir){
+    convertDone = false;
+    saveState();
+    logLine('info', '目录已更换，需要重新执行一次 docx 转换');
+  }
+  applyGateState();
+}
+
+$('root').addEventListener('input', onDirChanged);
 
 // 模糊匹配开关：开启前提醒可能误伤
 $('fuzzy').addEventListener('change', function(){

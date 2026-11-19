@@ -11,6 +11,7 @@ import shutil
 import threading
 import traceback
 import hashlib
+import uuid
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
@@ -19,6 +20,9 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 import fuzzy
+
+APP_VERSION = '1.1.0'
+APP_NAME = '文档批量处理工具'
 
 # ---------- 路径解析（兼容源码运行 / PyInstaller 打包）----------
 # 打包成 exe 后：静态资源在临时解压目录（sys._MEIPASS，只读），
@@ -70,6 +74,11 @@ def now():
 
 
 # ============ 全局状态 ============
+# 本次进程的会话标识：每次启动都不一样。前端拿它做比对——
+# 一致说明程序没重启（只是刷新了浏览器），可以恢复上次的目录/关键词；
+# 不一致说明程序重启过，按全新启动处理，清掉浏览器的旧配置。
+SESSION_ID = uuid.uuid4().hex
+
 LOCK = threading.Lock()
 STATE = {
     'running': False,
@@ -150,7 +159,7 @@ def write_run_header():
     """
     lines = [
         '=' * 62,
-        '文档批量处理工具  启动于 %s' % time.strftime('%Y-%m-%d %H:%M:%S'),
+        '%s v%s  启动于 %s' % (APP_NAME, APP_VERSION, time.strftime('%Y-%m-%d %H:%M:%S')),
         '程序目录：%s' % mask_path(_APP),
         '日志目录：%s' % mask_path(LOGDIR),
         '-' * 62,
@@ -1544,10 +1553,13 @@ def api_status(since: int = 0):
             'cancel': STATE['cancel'],
             'logfile': STATE['logfile'],
             'elapsed': round(time.time() - STATE['started_at'], 1) if STATE['started_at'] and STATE['running'] else None,
+            'finished_at': STATE['finished_at'],
             'stuck_file': STATE['stuck_file'],
             'stuck_seconds': stuck if STATE['running'] else 0,
             'stuck_limit': int(os.environ.get('TOOLKIT_FILE_TIMEOUT', '90')),
             'last_kill': STATE.get('last_kill', {}),
+            'session_id': SESSION_ID,
+            'version': APP_VERSION,
         }
 
 
@@ -1853,7 +1865,7 @@ if __name__ == '__main__':
     _info = detect_engines()
 
     print('=' * 58)
-    print('  文档批量处理工具')
+    print('  %s  v%s' % (APP_NAME, APP_VERSION))
     print('  地址: http://127.0.0.1:%d' % port)
     print('  日志目录: %s' % mask_path(LOGDIR))
     print('  本次日志: %s' % os.path.basename(LOG_FILE))
